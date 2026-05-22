@@ -162,6 +162,22 @@ export default function App() {
     }
   }, [handleGoHome, setSearchQuery, showToast, speak]);
 
+  // ── Voice controller integration ──
+  const { isListening, isSupported, toggleListening, speakAndResume } = useVoiceController({
+    onNext: handleNext,
+    onBack: handlePrev,
+    onRepeat: handleRepeat,
+    onStartTimer: handleStartTimer,
+    onStopTimer: handleStopTimer,
+    onGoToStep: handleGoToStep,
+    onGoHome: handleGoHome,
+    onSearch: (q) => {
+      setSearchQuery(q);
+      handleGoHome();
+    },
+    onOpenShopping: () => setShoppingOpen(true),
+  });
+
   // ── Apply persisted theme on mount ──
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', colorMode);
@@ -169,15 +185,17 @@ export default function App() {
   }, [colorMode, largeText]);
 
   // ── Auto-Read Step Logic (HCI: Accessibility) ──
+  // Uses speakAndResume so recognition is paused while TTS reads the step,
+  // then automatically resumes — preventing the mic from hearing TTS audio.
   useEffect(() => {
     if (cookingMode && autoReadSteps && selectedRecipeId) {
       const step = recipe.steps[currentStepIndex];
       const timer = setTimeout(() => {
-        speak(`Step ${currentStepIndex + 1}: ${step.instruction}`);
+        speakAndResume(`Step ${currentStepIndex + 1}: ${step.instruction}`);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [currentStepIndex, cookingMode, autoReadSteps, recipe.steps, speak, selectedRecipeId]);
+  }, [currentStepIndex, cookingMode, autoReadSteps, recipe.steps, speakAndResume, selectedRecipeId]);
 
   // ── Screen Wake Lock (HCI: Don't let screen sleep while cooking) ──
   useEffect(() => {
@@ -209,22 +227,6 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [cookingMode, handleNext, handlePrev, exitCookingMode]);
-
-  // ── Voice controller integration ──
-  const { isListening, isSupported, toggleListening } = useVoiceController({
-    onNext: handleNext,
-    onBack: handlePrev,
-    onRepeat: handleRepeat,
-    onStartTimer: handleStartTimer,
-    onStopTimer: handleStopTimer,
-    onGoToStep: setCurrentStep,
-    onGoHome: handleGoHome,
-    onSearch: (q) => {
-      setSearchQuery(q);
-      handleGoHome();
-    },
-    onOpenShopping: () => setShoppingOpen(true),
-  });
 
   const currentStep = recipe.steps[currentStepIndex];
 

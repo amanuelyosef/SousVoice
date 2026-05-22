@@ -23,7 +23,7 @@ describe('RecipeCard', () => {
     );
 
     expect(screen.getByText(mockRecipe.steps[0].instruction)).toBeInTheDocument();
-    expect(screen.getByText(`Step 1 of ${mockRecipe.steps.length}`)).toBeInTheDocument();
+    expect(screen.getByText(`Step 1 / ${mockRecipe.steps.length}`)).toBeInTheDocument();
   });
 
   it('calls onNext when the next button is clicked', () => {
@@ -72,7 +72,7 @@ describe('RecipeCard', () => {
       />
     );
 
-    const timerButton = screen.getByText(/Start \d+ min Timer/);
+    const timerButton = screen.getByText('⏱️ Timer');
     expect(timerButton).toBeInTheDocument();
     fireEvent.click(timerButton);
     expect(mockHandlers.onStartTimer).toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('RecipeCard', () => {
       />
     );
 
-    expect(screen.getByText('💡 Pro Tip')).toBeInTheDocument();
+    expect(screen.getByText('Pro Tip:')).toBeInTheDocument();
     expect(screen.getByText('Test Tip')).toBeInTheDocument();
   });
 });

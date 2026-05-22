@@ -203,7 +203,7 @@ const RecipeCard = memo(function RecipeCard({
                   className="text-sm leading-relaxed"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  <strong style={{ color: 'var(--accent-primary)' }}>Tip:</strong> {step.tip}
+                  <strong style={{ color: 'var(--accent-primary)' }}>Pro Tip:</strong> {step.tip}
                 </p>
               </div>
             )}

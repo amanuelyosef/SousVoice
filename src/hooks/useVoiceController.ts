@@ -2,6 +2,14 @@
  * useVoiceController — Web Speech API Hook
  * HCI: Voice input for hands-free cooking (Nielsen #7 — Flexibility).
  * Error Recovery (Nielsen #9): Unrecognized commands show friendly toasts.
+ *
+ * TTS ↔ Recognition Coordination:
+ *   To prevent the microphone from picking up the browser's own text-to-speech (TTS)
+ *   voice and triggering unwanted commands (self-triggering), we keep a simple
+ *   speaking state. While the assistant is actively speaking a step description,
+ *   voice commands are ignored (except "stop" / "pause").
+ *   This avoids constantly starting/stopping the SpeechRecognition engine,
+ *   which is slow, error-prone, and causes browser-specific lag or beep noises.
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -50,8 +58,12 @@ export function useVoiceController(handlers: VoiceHandlers) {
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const isListeningRef = useRef(false);
   const handlersRef = useRef(handlers);
+  
+  // Track active speech synthesis speaking state to prevent self-triggering
+  const isSpeakingRef = useRef(false);
+  const processCommandRef = useRef<(transcript: string) => void>(() => {});
 
-  // Update handlers ref on every render to avoid stale closures without tearing down recognition
+  // Update handlers ref on every render to avoid stale closures
   useEffect(() => {
     handlersRef.current = handlers;
   }, [handlers]);
@@ -64,14 +76,39 @@ export function useVoiceController(handlers: VoiceHandlers) {
       showToast: state.showToast,
       voiceEnabled: state.voiceEnabled,
     })));
+
   const lastTranscriptRef = useRef('');
   const isSupported =
     typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
+  // ── Command processor ──
   const processCommand = useCallback(
     (transcript: string) => {
       const cmd = transcript.toLowerCase().trim();
+      if (!cmd) return;
+
+      // Handle interrupt/stop commands even if the assistant is currently speaking
+      if (cmd.includes('stop') || cmd.includes('pause') || cmd.includes('cancel')) {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        isSpeakingRef.current = false;
+        stopListening();
+        showToast('🎤 Voice paused', 'info');
+        return;
+      }
+
+      // If the assistant is currently speaking, ignore incoming transcripts to prevent self-triggering
+      if (isSpeakingRef.current || (typeof window !== 'undefined' && window.speechSynthesis?.speaking)) {
+        return;
+      }
+
+      // Cancel any ongoing TTS just in case
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+
       lastTranscriptRef.current = cmd;
       setLastCommand(cmd);
 
@@ -101,8 +138,8 @@ export function useVoiceController(handlers: VoiceHandlers) {
         return;
       }
 
-      // ── Timer Controls ──
-      if (cmd.includes('timer') || cmd.includes('start timer') || cmd.includes('set timer')) {
+      // ── Timer Controls (specific first, then generic) ──
+      if (cmd.includes('start timer') || cmd.includes('set timer')) {
         handlersRef.current.onStartTimer?.();
         showToast('✓ Timer started!', 'success');
         return;
@@ -112,13 +149,12 @@ export function useVoiceController(handlers: VoiceHandlers) {
         showToast('✓ Timer stopped', 'info');
         return;
       }
-
-      // ── System Controls ──
-      if (cmd.includes('stop') || cmd.includes('pause') || cmd.includes('cancel')) {
-        stopListening();
-        showToast('🎤 Voice paused', 'info');
+      if (cmd.includes('timer')) {
+        handlersRef.current.onStartTimer?.();
+        showToast('✓ Timer started!', 'success');
         return;
       }
+
       if (cmd.includes('home') || cmd.includes('show recipes') || cmd.includes('library')) {
         handlersRef.current.onGoHome?.();
         showToast('✓ Returning home', 'info');
@@ -145,54 +181,138 @@ export function useVoiceController(handlers: VoiceHandlers) {
 
       showToast(`🤔 Heard: "${cmd}". Try "Help" for commands.`, 'error');
     },
-    [setLastCommand, showToast]
+    [setLastCommand, showToast, setIsListening]
   );
+
+  // Keep the processCommand ref in sync
+  useEffect(() => {
+    processCommandRef.current = processCommand;
+  }, [processCommand]);
+
+  // ── Helper: create and wire up a fresh SpeechRecognition instance ──
+  const createRecognition = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = false;
+    r.lang = 'en-US';
+    r.onstart = () => {
+      isListeningRef.current = true;
+      setIsListening(true);
+    };
+    r.onresult = (e: SpeechRecognitionEvent) => {
+      const last = e.results[e.results.length - 1];
+      if (last.isFinal) {
+        processCommandRef.current(last[0].transcript);
+      }
+    };
+    r.onerror = (e: SpeechRecognitionErrorEvent) => {
+      if (
+        e.error === 'no-speech' ||
+        e.error === 'aborted' ||
+        e.error === 'not-allowed' ||
+        e.error === 'audio-capture' ||
+        e.error === 'network'
+      ) return;
+      showToast(`Mic error: ${e.error}`, 'error');
+    };
+    r.onend = () => {
+      // Auto-restart if we're supposed to be listening
+      if (isListeningRef.current) {
+        try { r.start(); } catch { /* will retry on next toggle */ }
+      } else {
+        setIsListening(false);
+      }
+    };
+    return r;
+  }, [setIsListening, showToast]);
 
   const startListening = useCallback(() => {
     if (!isSupported) {
       showToast('Voice not supported in this browser.', 'error');
       return;
     }
-    if (recognitionRef.current) recognitionRef.current.abort();
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const r = new SR();
-    r.continuous = true;
-    r.interimResults = false;
-    r.lang = 'en-US';
-    r.onstart = () => { isListeningRef.current = true; setIsListening(true); };
-    r.onresult = (e: SpeechRecognitionEvent) => {
-      const last = e.results[e.results.length - 1];
-      if (last.isFinal) processCommand(last[0].transcript);
-    };
-    r.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (e.error === 'no-speech' || e.error === 'aborted') return;
-      showToast(`Mic error: ${e.error}`, 'error');
-    };
-    r.onend = () => {
-      if (isListeningRef.current) { try { r.start(); } catch {} }
-      else setIsListening(false);
-    };
+    // Tear down any previous instance
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch { /* ok */ }
+    }
+    const r = createRecognition();
     recognitionRef.current = r;
-    try { r.start(); } catch { showToast('Could not start voice.', 'error'); }
-  }, [isSupported, processCommand, setIsListening, showToast]);
+    
+    // Set listening state immediately for responsive visual feedback
+    isListeningRef.current = true;
+    setIsListening(true);
+    
+    try {
+      r.start();
+    } catch {
+      isListeningRef.current = false;
+      setIsListening(false);
+      showToast('Could not start voice.', 'error');
+    }
+  }, [isSupported, createRecognition, showToast, setIsListening]);
 
   const stopListening = useCallback(() => {
     isListeningRef.current = false;
     setIsListening(false);
-    recognitionRef.current?.abort();
-    recognitionRef.current = null;
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch { /* ok */ }
+      recognitionRef.current = null;
+    }
   }, [setIsListening]);
 
   const toggleListening = useCallback(() => {
+    // Cancel any ongoing TTS so the mic can hear the user clearly
+    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
     isListening ? stopListening() : startListening();
   }, [isListening, startListening, stopListening]);
 
-  useEffect(() => () => { recognitionRef.current?.abort(); }, []);
+  // ── speakAndResume: Coordinated TTS speaking helper ──
+  // Keeps track of speaking state to gate command recognition during TTS playback.
+  const speakAndResume = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) return;
 
+    window.speechSynthesis.cancel();
+    isSpeakingRef.current = true;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+
+    utterance.onend = () => {
+      isSpeakingRef.current = false;
+    };
+
+    utterance.onerror = () => {
+      isSpeakingRef.current = false;
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch { /* ok */ }
+    }
+  }, []);
+
+  // Auto-start/stop based on voiceEnabled setting
   useEffect(() => {
     if (voiceEnabled && !isListening) startListening();
     else if (!voiceEnabled && isListening) stopListening();
   }, [voiceEnabled]);
 
-  return { isListening, isSupported, startListening, stopListening, toggleListening, lastTranscript: lastTranscriptRef.current };
+  return {
+    isListening,
+    isSupported,
+    startListening,
+    stopListening,
+    toggleListening,
+    speakAndResume,
+    lastTranscript: lastTranscriptRef.current,
+    recognitionInstance: recognitionRef.current,
+  };
 }

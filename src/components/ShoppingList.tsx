@@ -85,7 +85,11 @@ const ShoppingList: React.FC<ShoppingListProps> = ({ isOpen, onClose }) => {
               {shoppingList.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
                   <span className="text-5xl">📄</span>
-                  <p style={{ color: 'var(--text-secondary)' }}>Your list is empty.<br/>Add ingredients from any recipe!</p>
+                  <p style={{ color: 'var(--text-secondary)' }}>
+                    <span>Your list is empty.</span>
+                    <br/>
+                    <span>Add ingredients from any recipe!</span>
+                  </p>
                 </div>
               ) : (
                 (Object.entries(groupedItems) as [string, typeof shoppingList][]).map(([recipeTitle, items]) => (
