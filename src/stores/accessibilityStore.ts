@@ -75,6 +75,8 @@ interface AccessibilityState {
   setActiveTimer: (seconds: number | null) => void;
 
   // ── Toast / Error Recovery ──
+  toastMessage: string | null;
+  toastType: 'info' | 'error' | 'success' | null;
   showToast: (message: string, type: 'info' | 'error' | 'success') => void;
   clearToast: () => void;
 
@@ -161,6 +163,8 @@ export const useAccessibilityStore = create<AccessibilityState>()(
       setActiveTimer: (seconds) => set({ activeTimer: seconds }),
 
       // ── Toast / Error Recovery ──
+      toastMessage: null,
+      toastType: null,
       showToast: (message, type) => set({ toastMessage: message, toastType: type }),
       clearToast: () => set({ toastMessage: null, toastType: null }),
 
