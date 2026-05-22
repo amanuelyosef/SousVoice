@@ -2,11 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useVoiceController } from './useVoiceController';
 
-// Mock simple debounce for tests
-vi.mock('lodash/debounce', () => ({
-  default: (fn: any) => fn,
-}));
-
 describe('useVoiceController', () => {
   const mockHandlers = {
     onNext: vi.fn(),
@@ -52,33 +47,34 @@ describe('useVoiceController', () => {
   });
 
   describe('Command Parsing Logic', () => {
-    // Note: Since we are mocking the Web Speech API in setup.ts, 
-    // we need to trigger the 'onresult' callback manually.
-    // However, for unit testing the hook's internal logic, we can
-    // test the command matching if the hook exposes it or by
-    // simulating the SpeechRecognition result event.
+    // Helper to simulate SpeechRecognition transcripts type-safely in unit tests
+    function sendVoiceCommand(recognition: any, transcript: string) {
+      const mockEvent = {
+        results: [
+          {
+            0: { transcript, confidence: 0.99 },
+            isFinal: true,
+          }
+        ] as any,
+        resultIndex: 0,
+      };
+      
+      act(() => {
+        recognition.onresult(mockEvent as any);
+      });
+    }
 
     it('should trigger onNext for "next" command', () => {
       const { result } = renderHook(() => useVoiceController(mockHandlers));
       
-      // Simulate a speech result event
       act(() => {
         result.current.toggleListening();
       });
 
       const recognition = (result.current as any).recognitionInstance;
+      expect(recognition).toBeDefined();
       if (recognition && recognition.onresult) {
-        const mockEvent = {
-          results: [
-            { 0: { transcript: 'next step', confidence: 0.99 }, isFinal: true }
-          ],
-          resultIndex: 0
-        };
-        
-        act(() => {
-          recognition.onresult(mockEvent);
-        });
-
+        sendVoiceCommand(recognition, 'next step');
         expect(mockHandlers.onNext).toHaveBeenCalled();
       }
     });
@@ -89,14 +85,7 @@ describe('useVoiceController', () => {
 
       const recognition = (result.current as any).recognitionInstance;
       if (recognition && recognition.onresult) {
-        const mockEvent = {
-          results: [[{ transcript: 'go back', confidence: 0.99 }]],
-          resultIndex: 0
-        };
-        mockEvent.results[0].isFinal = true;
-        act(() => {
-          recognition.onresult(mockEvent);
-        });
+        sendVoiceCommand(recognition, 'go back');
         expect(mockHandlers.onBack).toHaveBeenCalled();
       }
     });
@@ -107,14 +96,7 @@ describe('useVoiceController', () => {
 
       const recognition = (result.current as any).recognitionInstance;
       if (recognition && recognition.onresult) {
-        const mockEvent = {
-          results: [[{ transcript: 'start the timer', confidence: 0.99 }]],
-          resultIndex: 0
-        };
-        mockEvent.results[0].isFinal = true;
-        act(() => {
-          recognition.onresult(mockEvent);
-        });
+        sendVoiceCommand(recognition, 'start the timer');
         expect(mockHandlers.onStartTimer).toHaveBeenCalled();
       }
     });
@@ -125,14 +107,7 @@ describe('useVoiceController', () => {
 
       const recognition = (result.current as any).recognitionInstance;
       if (recognition && recognition.onresult) {
-        const mockEvent = {
-          results: [[{ transcript: 'search for pasta', confidence: 0.99 }]],
-          resultIndex: 0
-        };
-        mockEvent.results[0].isFinal = true;
-        act(() => {
-          recognition.onresult(mockEvent);
-        });
+        sendVoiceCommand(recognition, 'search for pasta');
         expect(mockHandlers.onSearch).toHaveBeenCalledWith('pasta');
       }
     });
@@ -143,14 +118,7 @@ describe('useVoiceController', () => {
 
       const recognition = (result.current as any).recognitionInstance;
       if (recognition && recognition.onresult) {
-        const mockEvent = {
-          results: [[{ transcript: 'go to step 3', confidence: 0.99 }]],
-          resultIndex: 0
-        };
-        mockEvent.results[0].isFinal = true;
-        act(() => {
-          recognition.onresult(mockEvent);
-        });
+        sendVoiceCommand(recognition, 'go to step 3');
         expect(mockHandlers.onGoToStep).toHaveBeenCalledWith(2); // 0-indexed
       }
     });
@@ -164,10 +132,8 @@ describe('useVoiceController', () => {
     if (recognition && recognition.onerror) {
       act(() => {
         // use an error that is not in the ignored list to ensure it surfaces properly
-        recognition.onerror({ error: 'not-supported' });
+        recognition.onerror({ error: 'not-supported' } as any);
       });
-      // The store or hook might handle it differently but it should clear listening if unrecoverable
-      // In this setup, we just test it doesn't crash.
     }
   });
 
@@ -177,15 +143,18 @@ describe('useVoiceController', () => {
 
     const recognition = (result.current as any).recognitionInstance;
     if (recognition && recognition.onresult) {
+      const mockEvent = {
+        results: [
+          {
+            0: { transcript: 'stop listening', confidence: 0.99 },
+            isFinal: true,
+          }
+        ] as any,
+        resultIndex: 0,
+      };
+
       act(() => {
-        recognition.onresult({
-          results: [[{ transcript: 'stop listening', confidence: 0.99 }]],
-          resultIndex: 0
-        });
-        // We inject isFinal property inline or right before:
-        const mockE = { results: [[{ transcript: 'stop listening' }]] };
-        mockE.results[0].isFinal = true;
-        recognition.onresult(mockE);
+        recognition.onresult(mockEvent as any);
       });
       expect(result.current.isListening).toBe(false);
     }
