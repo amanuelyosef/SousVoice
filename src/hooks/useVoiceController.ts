@@ -274,8 +274,13 @@ export function useVoiceController(handlers: VoiceHandlers) {
   const speakAndResume = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
 
+    const shouldResumeListening = isListeningRef.current;
     window.speechSynthesis.cancel();
     isSpeakingRef.current = true;
+
+    if (shouldResumeListening) {
+      stopListening();
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.95;
@@ -283,14 +288,20 @@ export function useVoiceController(handlers: VoiceHandlers) {
 
     utterance.onend = () => {
       isSpeakingRef.current = false;
+      if (shouldResumeListening) {
+        startListening();
+      }
     };
 
     utterance.onerror = () => {
       isSpeakingRef.current = false;
+      if (shouldResumeListening) {
+        startListening();
+      }
     };
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [startListening, stopListening]);
 
   // Cleanup on unmount
   useEffect(() => () => {

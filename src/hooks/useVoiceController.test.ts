@@ -46,6 +46,32 @@ describe('useVoiceController', () => {
     expect(typeof result.current.speakAndResume).toBe('function');
   });
 
+  it('should resume listening after speech ends', () => {
+    const { result } = renderHook(() => useVoiceController(mockHandlers));
+
+    act(() => {
+      result.current.toggleListening();
+    });
+
+    const spoken = vi.spyOn(window.speechSynthesis, 'speak');
+
+    act(() => {
+      result.current.speakAndResume('Step 1: mix the ingredients');
+    });
+
+    expect(result.current.isListening).toBe(false);
+    expect(spoken).toHaveBeenCalled();
+
+    const utterance = spoken.mock.calls[0][0] as SpeechSynthesisUtterance;
+
+    act(() => {
+      utterance.onend?.(new Event('end') as any);
+    });
+
+    expect(result.current.isListening).toBe(true);
+    spoken.mockRestore();
+  });
+
   describe('Command Parsing Logic', () => {
     // Helper to simulate SpeechRecognition transcripts type-safely in unit tests
     function sendVoiceCommand(recognition: any, transcript: string) {
