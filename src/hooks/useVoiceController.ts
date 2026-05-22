@@ -88,6 +88,23 @@ export function useVoiceController(handlers: VoiceHandlers) {
       const cmd = transcript.toLowerCase().trim();
       if (!cmd) return;
 
+      // ── Timer Controls (specific first, then generic) ──
+      if (cmd.includes('start timer') || cmd.includes('set timer')) {
+        handlersRef.current.onStartTimer?.();
+        showToast('✓ Timer started!', 'success');
+        return;
+      }
+      if (cmd.includes('stop timer') || cmd.includes('pause timer')) {
+        handlersRef.current.onStopTimer?.();
+        showToast('✓ Timer stopped', 'info');
+        return;
+      }
+      if (cmd.includes('timer')) {
+        handlersRef.current.onStartTimer?.();
+        showToast('✓ Timer started!', 'success');
+        return;
+      }
+
       // Handle interrupt/stop commands even if the assistant is currently speaking
       if (cmd.includes('stop') || cmd.includes('pause') || cmd.includes('cancel')) {
         if ('speechSynthesis' in window) {
@@ -135,23 +152,6 @@ export function useVoiceController(handlers: VoiceHandlers) {
         const stepNum = parseInt(stepMatch[1], 10);
         handlersRef.current.onGoToStep?.(stepNum - 1);
         showToast(`✓ Moving to step ${stepNum}`, 'success');
-        return;
-      }
-
-      // ── Timer Controls (specific first, then generic) ──
-      if (cmd.includes('start timer') || cmd.includes('set timer')) {
-        handlersRef.current.onStartTimer?.();
-        showToast('✓ Timer started!', 'success');
-        return;
-      }
-      if (cmd.includes('stop timer') || cmd.includes('pause timer')) {
-        handlersRef.current.onStopTimer?.();
-        showToast('✓ Timer stopped', 'info');
-        return;
-      }
-      if (cmd.includes('timer')) {
-        handlersRef.current.onStartTimer?.();
-        showToast('✓ Timer started!', 'success');
         return;
       }
 

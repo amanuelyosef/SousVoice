@@ -127,6 +127,18 @@ describe('useVoiceController', () => {
       }
     });
 
+    it('should trigger onStopTimer for "stop timer" command', () => {
+      const { result } = renderHook(() => useVoiceController(mockHandlers));
+      act(() => { result.current.toggleListening(); });
+
+      const recognition = (result.current as any).recognitionInstance;
+      if (recognition && recognition.onresult) {
+        sendVoiceCommand(recognition, 'stop timer');
+        expect(mockHandlers.onStopTimer).toHaveBeenCalled();
+        expect(result.current.isListening).toBe(true);
+      }
+    });
+
     it('should trigger onSearch for "search" command with payload', () => {
       const { result } = renderHook(() => useVoiceController(mockHandlers));
       act(() => { result.current.toggleListening(); });
