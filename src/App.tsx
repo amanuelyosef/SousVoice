@@ -171,10 +171,7 @@ export default function App() {
     onStopTimer: handleStopTimer,
     onGoToStep: handleGoToStep,
     onGoHome: handleGoHome,
-    onSearch: (q) => {
-      setSearchQuery(q);
-      handleGoHome();
-    },
+    onSearch: handleSearch,
     onOpenShopping: () => setShoppingOpen(true),
   });
 
